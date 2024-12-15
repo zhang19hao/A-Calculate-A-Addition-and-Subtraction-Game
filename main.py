@@ -7,7 +7,7 @@ from datetime import datetime
 import sqlite3
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+CORS(app)
 
 # 使用SQLite数据库存储记录
 DB_FILE = 'game_records.db'
@@ -45,37 +45,20 @@ init_db()
 
 @app.route('/init_user', methods=['GET'])
 def init_user():
+    response = make_response(jsonify({'success': True}))
     user_id = request.cookies.get('user_id')
     
     if not user_id:
         # 生成新用户ID
         user_id = f"user_{random.randint(10000, 99999)}"
+        response.set_cookie('user_id', user_id, max_age=30*24*60*60)  # 30天过期
         
         # 将新用户添加到数据库
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        try:
-            c.execute('INSERT INTO users (user_id) VALUES (?)', (user_id,))
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            return jsonify({'error': str(e)}), 500
-        finally:
-            conn.close()
-    
-    # 创建响应
-    response = make_response(jsonify({
-        'success': True,
-        'user_id': user_id,
-        'is_new_user': user_id not in request.cookies
-    }))
-    
-    # 设置cookie
-    response.set_cookie('user_id', user_id, 
-                       max_age=30*24*60*60,  # 30天过期
-                       httponly=False,        # 允许JavaScript访问
-                       samesite='Lax',       # 允许跨站点请求
-                       path='/')             # 对所有路径有效
+        c.execute('INSERT INTO users (user_id) VALUES (?)', (user_id,))
+        conn.commit()
+        conn.close()
     
     return response
 
@@ -205,5 +188,9 @@ def check_answer():
     else:
         return jsonify({'result': '错误'})
 
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
