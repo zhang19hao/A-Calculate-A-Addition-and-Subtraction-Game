@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>加减法游戏</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>100以内加减法游戏</h1>
+            <button class="exit-btn" onclick="exitGame()">
+                <span class="icon">🏠</span> 返回菜单
+            </button>
+        </div>
+        <div class="question-display" id="question">点击开始生成题目</div>
+        <div class="input-group">
+            <input type="number" id="answer" placeholder="输入答案" />
+        </div>
+        <p class="result" id="result"></p>
+        <p id="score">得分：0</p>
+    </div>
+
+    <script>
+        let correctAnswer;
+        let score = 0;
+        const BASE_URL = 'http://127.0.0.1:5000';
+        
+        // 从 URL 获取难度参数
+        const urlParams = new URLSearchParams(window.location.search);
+        const difficulty = urlParams.get('difficulty') || 'medium';
+
+        async function generateQuestion() {
+            const questionElement = document.getElementById('question');
+            
+            try {
+                questionElement.innerText = '正在生成题目...';
+                
+                const response = await fetch(`${BASE_URL}/generate_question?difficulty=${difficulty}`, {
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error('获取题目失败');
+                }
+                
+                const data = await response.json();
+                correctAnswer = data.answer;
+                questionElement.innerText = `${data.question} = ?`;
+                document.getElementById('result').innerText = '';
+                document.getElementById('answer').value = '';
+            } catch (error) {
+                questionElement.innerText = '生成题目时出错，请重试';
+                console.error('错误:', error);
+            }
+        }
+
+        async function checkAnswer(userAnswer) {
+            const resultElement = document.getElementById('result');
+            const inputElement = document.getElementById('answer');
+            try {
+                inputElement.disabled = true;
+                
+                const response = await fetch(`${BASE_URL}/check_answer`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        answer: userAnswer, 
+                        correct_answer: correctAnswer 
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('检查答案失败');
+                }
+                
+                const result = await response.json();
+                if (result.result === '正确') {
+                    score += 10;
+                    resultElement.className = 'result correct';
+                    resultElement.innerText = result.result;
+                    document.getElementById('score').innerText = `得分：${score}`;
+                    
+                    // 保存分数
+                    await saveScore();
+                    
+                    // 答对后等待1秒生成新题目
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    generateQuestion();
+                } else {
+                    resultElement.className = 'result wrong';
+                    resultElement.innerText = result.result;
+                    // 答错后清空输入框，允许继续答题
+                    inputElement.value = '';
+                }
+            } catch (error) {
+                resultElement.innerText = '提交答案时出错，请重试';
+                console.error('错误:', error);
+            } finally {
+                inputElement.disabled = false;
+                inputElement.focus(); // 自动聚焦输入框
+            }
+        }
+
+        async function saveScore() {
+            try {
+                await fetch(`${BASE_URL}/save_score`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        score: score,
+                        difficulty: difficulty
+                    })
+                });
+            } catch (error) {
+                console.error('保存分数失败:', error);
+            }
+        }
+
+        // 监听回车键
+        document.getElementById('answer').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const userAnswer = parseInt(this.value);
+                if (!isNaN(userAnswer)) {
+                    checkAnswer(userAnswer);
+                    this.value = ''; // 清空输入框
+                } else {
+                    document.getElementById('result').innerText = '请输入有效的数字';
+                    document.getElementById('result').className = 'result wrong';
+                }
+            }
+        });
+
+        // 页面加载时生成第一道题
+        window.onload = generateQuestion;
+
+        async function exitGame() {
+            // 保存最后的分数
+            await saveScore();
+            // 返回菜单页面
+            window.location.href = 'menu.html';
+        }
+    </script>
+</body>
+</html>
